@@ -1,60 +1,54 @@
 [app]
 
-# Название приложения (отображается на телефоне)
+# Название приложения
 title = Мои Заметки
 
-# Имя пакета (должно быть уникальным!)
-# ВАЖНО: Измените на что-то уникальное!
+# Имя пакета (УНИКАЛЬНОЕ!)
 package.name = mynotesapp
 
-# Домен (в обратном порядке, как в Android)
-# ВАЖНО: Измените на свой!
-package.domain = com.github.yourusername
+# Домен
+package.domain = com.example
 
-# Версия приложения
+# Версия
 version = 1.0
 
 # Исходный код
 source.dir = .
 source.main = main.py
 
-# Требуемые библиотеки
+# Зависимости
 requirements = python3,kivy==2.1.0
 
-# Ориентация экрана
+# Ориентация
 orientation = portrait
 
-# Разрешения Android
+# Разрешения
 android.permissions = WRITE_EXTERNAL_STORAGE, READ_EXTERNAL_STORAGE
 
 # Минимальная версия Android
-android.api = 21
+android.api = 31
 android.minapi = 21
 
-# Версия SDK
-android.sdk = 24
+# Архитектуры (ИСПРАВЛЕНО: archs вместо arch)
+android.archs = arm64-v8a, armeabi-v7a
 
-# Версия NDK
-android.ndk = 23b
+# NDK версия
+android.ndk = 25b
 
-# Архитектура (armeabi-v7a работает на большинстве устройств)
-android.arch = armeabi-v7a
-
-# Ключи для подписи (для debug сборки)
-android.release_artifact = .apk
-
-# Дополнительные настройки
+# Лицензии
 android.accept_sdk_license = True
 
-# Иконка (опционально - можно добавить icon.png в папку)
+# Иконка
 # icon.filename = %(source.dir)s/icon.png
 
-# Заставка при запуске (опционально)
+# Заставка
 # presplash.filename = %(source.dir)s/presplash.png
-# presplash.color = #FFFFFF
 
-# Полноэкранный режим (0 = нет, 1 = да)
+# Полноэкранный режим
 fullscreen = 0
 
-# Логи
+# Уровень логирования
 log_level = 2
+
+# Версия Android SDK Tools
+# android.sdk = 24  # УДАЛИТЬ эту строку - она устарела
