@@ -20,7 +20,7 @@ jobs:
       with:
         python-version: '3.9'
     
-    # 3. Устанавливаем системные зависимости
+    # 3. Устанавливаем системные зависимости (АДАПТИРОВАННЫЕ ДЛЯ UBUNTU 24.04)
     - name: Install system dependencies
       run: |
         sudo apt-get update
@@ -29,72 +29,134 @@ jobs:
           git \
           zip \
           unzip \
-          openjdk-11-jdk \
+          curl \
+          openjdk-17-jdk \
           python3-pip \
           autoconf \
           libtool \
           pkg-config \
           zlib1g-dev \
-          libncurses5-dev \
-          libncursesw5-dev \
-          libtinfo5 \
+          libncurses-dev \
           cmake \
           libffi-dev \
           libssl-dev \
+          libjpeg-dev \
+          libtiff-dev \
           libsdl2-dev \
           libsdl2-image-dev \
           libsdl2-mixer-dev \
-          libsdl2-ttf-dev
+          libsdl2-ttf-dev \
+          libportmidi-dev \
+          libswscale-dev \
+          libavformat-dev \
+          libavcodec-dev \
+          libgstreamer1.0-dev \
+          gstreamer1.0-plugins-base \
+          gstreamer1.0-plugins-good \
+          wget \
+          ccache
     
-    # 4. Устанавливаем Buildozer и Cython
-    - name: Install Buildozer
+    # 4. Устанавливаем Buildozer и зависимости Python
+    - name: Install Buildozer and Python dependencies
       run: |
         pip install --upgrade pip
-        pip install buildozer==1.4.0
-        pip install cython==0.29.28
+        pip install buildozer==1.5.0
+        pip install cython==0.29.36
+        pip install virtualenv
     
-    # 5. Инициализируем Buildozer (создает buildozer.spec если нет)
+    # 5. Инициализируем Buildozer если нужно
     - name: Initialize Buildozer
       run: |
         if [ ! -f buildozer.spec ]; then
-          echo "Creating buildozer.spec..."
-          buildozer init
-        else
-          echo "buildozer.spec already exists"
+          echo "Warning: buildozer.spec not found, creating minimal one..."
+          echo '[app]
+        title = My Notes
+        package.name = mynotes
+        package.domain = com.example
+        version = 1.0
+        source.dir = .
+        source.main = main.py
+        requirements = python3,kivy
+        orientation = portrait
+        android.api = 21
+        android.ndk = 23b' > buildozer.spec
         fi
         
-        # Проверяем файлы
-        echo "Current directory contents:"
+        # Показываем структуру проекта
+        echo "Project structure:"
         ls -la
-        echo "buildozer.spec contents:"
+        
+        # Показываем buildozer.spec
+        echo -e "\nbuildozer.spec content:"
         cat buildozer.spec
     
-    # 6. Собираем APK (debug версия)
-    - name: Build APK
+    # 6. Настраиваем Buildozer
+    - name: Configure Buildozer
       run: |
-        # Экспортируем PATH для Buildozer
+        # Создаем директорию для кэша
+        mkdir -p ~/.buildozer
+        mkdir -p ~/.android
+        
+        # Устанавливаем переменные окружения
+        export ANDROID_SDK_ROOT=~/.buildozer/android/platform/android-sdk
+        export ANDROID_HOME=~/.buildozer/android/platform/android-sdk
+        
+        echo "Buildozer configuration done"
+    
+    # 7. Собираем APK
+    - name: Build APK
+      timeout-minutes: 60
+      run: |
+        # Экспортируем переменные
         export PATH=$PATH:$HOME/.local/bin
+        export ANDROID_SDK_ROOT=~/.buildozer/android/platform/android-sdk
+        export ANDROID_HOME=~/.buildozer/android/platform/android-sdk
+        
+        # Отключаем некоторые проверки для ускорения
+        export BUILDOZER_USE_CCACHE=1
+        
+        echo "Starting APK build..."
         
         # Очищаем предыдущие сборки
-        buildozer android clean
+        buildozer android clean || true
         
         # Собираем APK
-        buildozer android debug
+        buildozer android debug 2>&1 | tail -200
         
         # Проверяем результат
-        echo "Build complete. Checking bin directory:"
-        ls -la bin/ || echo "bin directory not found"
+        echo -e "\n\nBuild completed. Checking bin directory:"
+        if [ -d "bin" ]; then
+          ls -la bin/
+          echo "APK files found:"
+          find bin/ -name "*.apk" -type f
+        else
+          echo "bin directory not found!"
+        fi
       env:
-        # Увеличиваем память для Java
-        JAVA_OPTS: "-Xmx2G"
-        # Устанавливаем переменную для Buildozer
-        BUILDOZER_USE_CCACHE: "1"
+        JAVA_OPTS: "-Xmx4G -XX:+UseG1GC"
+        GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.parallel=true"
     
-    # 7. Загружаем APK как артефакт
-    - name: Upload APK
+    # 8. Загружаем APK если он создан
+    - name: Upload APK artifact
       if: success()
       uses: actions/upload-artifact@v4
       with:
         name: Notes-App-APK
         path: bin/*.apk
+        if-no-files-found: warn
         retention-days: 7
+    
+    # 9. Проверяем логи если сборка упала
+    - name: Check logs if failed
+      if: failure()
+      run: |
+        echo "Build failed. Checking for logs..."
+        if [ -f ".buildozer/android/platform/build-arm64-v8a_armeabi-v7a/dists/myapp/build/outputs/apk/debug/output.json" ]; then
+          cat .buildozer/android/platform/build-arm64-v8a_armeabi-v7a/dists/myapp/build/outputs/apk/debug/output.json | jq .
+        fi
+        
+        # Проверяем существующие лог файлы
+        find .buildozer -name "*.log" -type f | head -5 | while read log; do
+          echo -e "\n=== Last 50 lines of $log ==="
+          tail -50 "$log"
+        done
