@@ -2,22 +2,20 @@ name: Build Android APK
 
 on:
   push:
-    branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
-  workflow_dispatch:  # Позволяет запускать сборку вручную из интерфейса GitHub
+    branches: [ main ]
+  workflow_dispatch:
 
 jobs:
-  build-apk:
+  build:
     runs-on: ubuntu-latest
     
     steps:
-    # 1. Клонируем репозиторий
+    # 1. Клонируем код
     - name: Checkout repository
       uses: actions/checkout@v4
     
     # 2. Устанавливаем Python
-    - name: Set up Python 3.9
+    - name: Setup Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.9'
@@ -31,7 +29,6 @@ jobs:
           git \
           zip \
           unzip \
-          curl \
           openjdk-11-jdk \
           python3-pip \
           autoconf \
@@ -44,19 +41,10 @@ jobs:
           cmake \
           libffi-dev \
           libssl-dev \
-          libjpeg-dev \
-          libtiff-dev \
           libsdl2-dev \
           libsdl2-image-dev \
           libsdl2-mixer-dev \
-          libsdl2-ttf-dev \
-          libportmidi-dev \
-          libswscale-dev \
-          libavformat-dev \
-          libavcodec-dev \
-          libgstreamer1.0-dev \
-          gstreamer1.0-plugins-base \
-          gstreamer1.0-plugins-good
+          libsdl2-ttf-dev
     
     # 4. Устанавливаем Buildozer и Cython
     - name: Install Buildozer
@@ -64,73 +52,49 @@ jobs:
         pip install --upgrade pip
         pip install buildozer==1.4.0
         pip install cython==0.29.28
-        pip install virtualenv
     
-    # 5. Кэшируем зависимости (ускоряет последующие сборки)
-    - name: Cache Buildozer dependencies
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.buildozer
-          ~/.android
-          ~/.gradle
-        key: ${{ runner.os }}-buildozer-${{ hashFiles('buildozer.spec') }}
-        restore-keys: |
-          ${{ runner.os }}-buildozer-
-    
-    # 6. Создаем виртуальное окружение Python
-    - name: Set up Python virtual environment
+    # 5. Инициализируем Buildozer (создает buildozer.spec если нет)
+    - name: Initialize Buildozer
       run: |
-        python -m venv venv
-        . venv/bin/activate
-        pip install -r requirements.txt
-    
-    # 7. Собираем APK (debug версия)
-    - name: Build APK with Buildozer
-      run: |
-        export PATH=$PATH:~/.local/bin
-        buildozer android clean
-        buildozer android debug
-      env:
-        # Устанавливаем лимит памяти для сборки
-        JAVA_OPTS: "-Xmx2048M"
-    
-    # 8. Переименовываем APK файл для удобства
-    - name: Rename APK file
-      run: |
-        cd bin
-        # Находим APK файл и переименовываем
-        for file in *.apk; do
-          mv "$file" "MyNotesApp.apk"
-        done
+        if [ ! -f buildozer.spec ]; then
+          echo "Creating buildozer.spec..."
+          buildozer init
+        else
+          echo "buildozer.spec already exists"
+        fi
+        
+        # Проверяем файлы
+        echo "Current directory contents:"
         ls -la
+        echo "buildozer.spec contents:"
+        cat buildozer.spec
     
-    # 9. Загружаем APK как артефакт (ИСПРАВЛЕНО - v4 вместо v3)
-    - name: Upload APK artifact
+    # 6. Собираем APK (debug версия)
+    - name: Build APK
+      run: |
+        # Экспортируем PATH для Buildozer
+        export PATH=$PATH:$HOME/.local/bin
+        
+        # Очищаем предыдущие сборки
+        buildozer android clean
+        
+        # Собираем APK
+        buildozer android debug
+        
+        # Проверяем результат
+        echo "Build complete. Checking bin directory:"
+        ls -la bin/ || echo "bin directory not found"
+      env:
+        # Увеличиваем память для Java
+        JAVA_OPTS: "-Xmx2G"
+        # Устанавливаем переменную для Buildozer
+        BUILDOZER_USE_CCACHE: "1"
+    
+    # 7. Загружаем APK как артефакт
+    - name: Upload APK
+      if: success()
       uses: actions/upload-artifact@v4
       with:
-        name: MyNotesApp-APK
+        name: Notes-App-APK
         path: bin/*.apk
-    
-    # 10. Создаем релиз (опционально) - тоже обновляем
-    - name: Create GitHub Release
-      if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
-      uses: softprops/action-gh-release@v1
-      with:
-        files: bin/*.apk
-        tag_name: v1.0-${{ github.run_number }}
-        name: Release v1.0.${{ github.run_number }}
-        body: |
-          Автоматически собранный APK для приложения "Мои Заметки"
-          
-          ### Что нового:
-          - Автоматическая сборка через GitHub Actions
-          - Простое управление заметками
-          - Сохранение в текстовый файл
-          
-          ### Как установить:
-          1. Скачайте APK файл
-          2. На Android разрешите установку из неизвестных источников
-          3. Установите приложение
-        draft: false
-        prerelease: false
+        retention-days: 7
