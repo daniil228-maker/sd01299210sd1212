@@ -14,11 +14,11 @@ jobs:
     steps:
     # 1. Клонируем репозиторий
     - name: Checkout repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
     
     # 2. Устанавливаем Python
     - name: Set up Python 3.9
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.9'
     
@@ -68,7 +68,7 @@ jobs:
     
     # 5. Кэшируем зависимости (ускоряет последующие сборки)
     - name: Cache Buildozer dependencies
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: |
           ~/.buildozer
@@ -105,14 +105,14 @@ jobs:
         done
         ls -la
     
-    # 9. Загружаем APK как артефакт
+    # 9. Загружаем APK как артефакт (ИСПРАВЛЕНО - v4 вместо v3)
     - name: Upload APK artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: MyNotesApp-APK
         path: bin/*.apk
     
-    # 10. Создаем релиз (опционально)
+    # 10. Создаем релиз (опционально) - тоже обновляем
     - name: Create GitHub Release
       if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
       uses: softprops/action-gh-release@v1
