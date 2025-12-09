@@ -7,156 +7,132 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     
     steps:
-    # 1. Клонируем код
-    - name: Checkout repository
-      uses: actions/checkout@v4
+    - uses: actions/checkout@v4
     
-    # 2. Устанавливаем Python
-    - name: Setup Python
+    - name: Setup Python 3.9
       uses: actions/setup-python@v5
       with:
         python-version: '3.9'
     
-    # 3. Устанавливаем системные зависимости (АДАПТИРОВАННЫЕ ДЛЯ UBUNTU 24.04)
-    - name: Install system dependencies
+    - name: Install dependencies
       run: |
         sudo apt-get update
         sudo apt-get install -y \
-          build-essential \
+          python3-pip \
+          openjdk-17-jdk \
           git \
           zip \
           unzip \
-          curl \
-          openjdk-17-jdk \
-          python3-pip \
-          autoconf \
-          libtool \
-          pkg-config \
-          zlib1g-dev \
-          libncurses-dev \
-          cmake \
-          libffi-dev \
           libssl-dev \
+          libffi-dev \
+          zlib1g-dev \
           libjpeg-dev \
-          libtiff-dev \
           libsdl2-dev \
           libsdl2-image-dev \
           libsdl2-mixer-dev \
           libsdl2-ttf-dev \
-          libportmidi-dev \
-          libswscale-dev \
-          libavformat-dev \
-          libavcodec-dev \
-          libgstreamer1.0-dev \
-          gstreamer1.0-plugins-base \
-          gstreamer1.0-plugins-good \
-          wget \
           ccache
     
-    # 4. Устанавливаем Buildozer и зависимости Python
-    - name: Install Buildozer and Python dependencies
+    - name: Install Buildozer
       run: |
         pip install --upgrade pip
         pip install buildozer==1.5.0
         pip install cython==0.29.36
-        pip install virtualenv
     
-    # 5. Инициализируем Buildozer если нужно
-    - name: Initialize Buildozer
+    - name: Setup Android SDK and NDK
       run: |
-        if [ ! -f buildozer.spec ]; then
-          echo "Warning: buildozer.spec not found, creating minimal one..."
-          echo '[app]
-        title = My Notes
-        package.name = mynotes
-        package.domain = com.example
-        version = 1.0
-        source.dir = .
-        source.main = main.py
-        requirements = python3,kivy
-        orientation = portrait
-        android.api = 21
-        android.ndk = 23b' > buildozer.spec
+        # Устанавливаем правильную версию NDK через sdkmanager
+        mkdir -p ~/android-sdk
+        cd ~/android-sdk
+        
+        # Скачиваем command-line tools
+        if [ ! -d "cmdline-tools" ]; then
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
+          unzip -q commandlinetools-linux-9477386_latest.zip
+          mv cmdline-tools latest
+          mkdir -p cmdline-tools
+          mv latest cmdline-tools/
+          rm commandlinetools-linux-9477386_latest.zip
         fi
         
-        # Показываем структуру проекта
-        echo "Project structure:"
-        ls -la
+        export ANDROID_SDK_ROOT=~/android-sdk
+        export ANDROID_HOME=~/android-sdk
+        export PATH=$PATH:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin
         
-        # Показываем buildozer.spec
-        echo -e "\nbuildozer.spec content:"
+        # Принимаем лицензии
+        yes | sdkmanager --licenses
+        
+        # Устанавливаем NDK 26 (самая новая стабильная)
+        sdkmanager "ndk;26.3.11579264"
+        
+        # Устанавливаем платформу
+        sdkmanager "platforms;android-33"
+        sdkmanager "platform-tools"
+        sdkmanager "build-tools;34.0.0"
+        
+        echo "Android SDK/NDK установлены"
+    
+    - name: Create buildozer.spec
+      run: |
+        cat > buildozer.spec << 'EOF'
+[app]
+title = Мои Заметки
+package.name = mynotesapp
+package.domain = com.example
+version = 1.0
+source.dir = .
+source.main = main.py
+requirements = python3,kivy==2.1.0
+orientation = portrait
+android.minapi = 21
+android.api = 33
+android.ndk = 26.3.11579264
+android.archs = arm64-v8a
+android.permissions = WRITE_EXTERNAL_STORAGE, READ_EXTERNAL_STORAGE
+android.accept_sdk_license = True
+fullscreen = 0
+log_level = 2
+EOF
+        
+        echo "buildozer.spec создан:"
         cat buildozer.spec
     
-    # 6. Настраиваем Buildozer
-    - name: Configure Buildozer
-      run: |
-        # Создаем директорию для кэша
-        mkdir -p ~/.buildozer
-        mkdir -p ~/.android
-        
-        # Устанавливаем переменные окружения
-        export ANDROID_SDK_ROOT=~/.buildozer/android/platform/android-sdk
-        export ANDROID_HOME=~/.buildozer/android/platform/android-sdk
-        
-        echo "Buildozer configuration done"
-    
-    # 7. Собираем APK
-    - name: Build APK
+    - name: Build APK with Buildozer
       timeout-minutes: 60
       run: |
-        # Экспортируем переменные
-        export PATH=$PATH:$HOME/.local/bin
-        export ANDROID_SDK_ROOT=~/.buildozer/android/platform/android-sdk
-        export ANDROID_HOME=~/.buildozer/android/platform/android-sdk
+        # Экспортируем правильные пути
+        export ANDROID_SDK_ROOT=~/android-sdk
+        export ANDROID_HOME=~/android-sdk
+        export ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/26.3.11579264
+        export PATH=$PATH:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin
         
-        # Отключаем некоторые проверки для ускорения
-        export BUILDOZER_USE_CCACHE=1
-        
-        echo "Starting APK build..."
-        
-        # Очищаем предыдущие сборки
-        buildozer android clean || true
+        # Проверяем NDK
+        echo "Checking NDK:"
+        ls -la $ANDROID_NDK_HOME || echo "NDK not found"
         
         # Собираем APK
-        buildozer android debug 2>&1 | tail -200
+        echo "Starting build..."
+        buildozer android debug 2>&1 | tail -100
         
         # Проверяем результат
-        echo -e "\n\nBuild completed. Checking bin directory:"
         if [ -d "bin" ]; then
-          ls -la bin/
-          echo "APK files found:"
-          find bin/ -name "*.apk" -type f
+          echo "APK files:"
+          ls -lh bin/*.apk
         else
-          echo "bin directory not found!"
+          echo "ERROR: APK not built"
+          exit 1
         fi
       env:
-        JAVA_OPTS: "-Xmx4G -XX:+UseG1GC"
-        GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.parallel=true"
+        JAVA_OPTS: "-Xmx4G"
+        GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g"
     
-    # 8. Загружаем APK если он создан
-    - name: Upload APK artifact
+    - name: Upload APK
       if: success()
       uses: actions/upload-artifact@v4
       with:
         name: Notes-App-APK
         path: bin/*.apk
-        if-no-files-found: warn
         retention-days: 7
-    
-    # 9. Проверяем логи если сборка упала
-    - name: Check logs if failed
-      if: failure()
-      run: |
-        echo "Build failed. Checking for logs..."
-        if [ -f ".buildozer/android/platform/build-arm64-v8a_armeabi-v7a/dists/myapp/build/outputs/apk/debug/output.json" ]; then
-          cat .buildozer/android/platform/build-arm64-v8a_armeabi-v7a/dists/myapp/build/outputs/apk/debug/output.json | jq .
-        fi
-        
-        # Проверяем существующие лог файлы
-        find .buildozer -name "*.log" -type f | head -5 | while read log; do
-          echo -e "\n=== Last 50 lines of $log ==="
-          tail -50 "$log"
-        done
